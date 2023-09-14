@@ -1,0 +1,39 @@
+[bootstrap]
+main_collection = /main/main.collectionc
+
+[script]
+shared_state = 1
+
+[display]
+width = 1920
+height = 1080
+high_dpi = 1
+update_frequency = 60
+
+[android]
+input_method = HiddenInputField
+
+[project]
+title = Text Adventure Template
+version = 1.0
+publisher = ktulhusolutions
+developer = ktulhusolutions
+custom_resources = story/,images/
+dependencies#0 = https://github.com/abadonna/defold-ink/archive/master.zip
+dependencies#1 = https://github.com/britzl/defold-richtext/archive/master.zip
+
+[engine]
+fixed_update_frequency = 30
+
+[html5]
+cssfile = /builtins/manifests/web/dark_theme.css
+heap_size = 128
+
+[graphics]
+max_characters = 16000
+
+[render]
+clear_color_red = 0.15
+clear_color_green = 0.15
+clear_color_blue = 0.15
+

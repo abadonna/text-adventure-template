@@ -1,0 +1,633 @@
+local ink = require "ink.story"
+local richtext = require "richtext.richtext"
+local poolwidget = require "hud.widgets.numberpool"
+local pointswidget = require "hud.widgets.points"
+local conditionwidget = require "hud.widgets.condition"
+local inputwidget = require "hud.widgets.textinput"
+
+local utils = require "ink.utils"
+
+local HEIGHT = 900
+
+local function localize(self, s)
+	--utils.strings should be a table with localized strings
+	if utils.strings and utils.strings[s] then
+		return "<font=" .. self.settings.localized_font .. ">" .. utils.strings[s] .. "</font>"
+	end
+
+	return s
+end
+
+function string:split(sep)
+	if sep == nil then
+		sep = '%s'
+	end 
+
+	local res = {}
+	local func = function(w)
+		table.insert(res, w)
+	end 
+
+	string.gsub(self, '[^'..sep..']+', func)
+	return res 
+end
+
+local function restore_hover(self)
+	if self.hover then
+		gui.animate(self.hover, "color", vmath.vector4(0, 0.5, 0, 1), gui.EASING_LINEAR, 0.2)
+		self.hover = nil
+	end
+end
+
+local function clear_text(words, widgets)
+
+	gui.set_position(gui.get_node("container"), vmath.vector3(0,0,0))
+	
+	for _, widget in ipairs(widgets) do
+		widget.delete()
+	end
+	
+	if not words then return end
+	
+	local word = table.remove(words)
+	while word do
+		if word.node then
+			gui.delete_node(word.node)
+		end
+		word = table.remove(words)
+	end
+
+end
+
+local function load_image(self, name)
+	if not name or self.current_image == name or self.image_cooldown then return end
+	self.image_cooldown = true
+	timer.delay(1, false, function() self.image_cooldown = false end)
+	local time = self.current_image ~= nil and 0.5 or 0.2
+	self.current_image = name
+	local node = gui.clone(gui.get_node("picture"))
+	local res = sys.load_resource("/images/" .. name .. ".jpg")
+	local img = image.load(res)
+	gui.new_texture(name, img.width, img.height, img.type, img.buffer)
+	gui.set_texture(node, name)
+
+	gui.move_above(node, nil)
+	
+	gui.animate(node, "color.w", 1, gui.EASING_LINEAR, time, 0, function()
+		if self.picture_node then
+			local t = gui.get_texture(self.picture_node)
+			gui.delete_node(self.picture_node)
+			gui.delete_texture(t)
+		end
+		self.picture_node = node
+	end)
+end
+
+local function update_image(self, y)
+	if #self.images < 2 then return end
+	local active = self.images[1]
+	for _, img in ipairs(self.images) do
+		if img.pos > y then
+			break
+		end
+		active = img
+	end
+	
+	load_image(self, active.name)
+end
+
+local function fadeout(self, s)
+	self.sounds[s.name .. "__"] = s
+	local url = "/sound#" .. s.name
+	s.co = coroutine.create(function()
+		while s.gain > 0 do
+			s.gain = s.gain - 0.05
+			sound.set_gain(url, s.gain)
+			timer.delay(0.1, false, function()
+				if s.co then
+					coroutine.resume(s.co)
+				end
+			end)
+			coroutine.yield()
+		end
+		s.gain = 0.0
+		s.co = nil
+		self.sounds[s.name .. "__"] = nil
+		sound.stop(url)
+	end)
+
+	coroutine.resume(s.co)
+end
+
+local function fadein(self, s)
+	local fading = s.name .. "__"
+	if self.sounds[fading] then
+		self.sounds[fading].co = nil
+		self.sounds[fading] = nil
+	end
+	
+	local url = "/sound#" .. s.name
+	s.co = coroutine.create(function()
+		while s.gain < 1.0 do
+			s.gain = s.gain + 0.05
+			sound.set_gain(url, s.gain)
+			timer.delay(0.1, false, function()
+				if s.co then
+					coroutine.resume(s.co)
+				end
+			end)
+			coroutine.yield()
+		end
+		s.gain = 1.0
+		s.co = nil
+	end)
+	
+	coroutine.resume(s.co)
+end
+
+local function play_sound(self, data)
+	local name = data[2]
+	local channel = data[3] or "main"
+	if self.sounds[channel] then
+		if self.sounds[channel].name == name then
+			return
+		end
+		fadeout(self, self.sounds[channel])
+		self.sounds[channel] = {name = name, gain = 0}
+		sound.play("/sound#" .. name, {gain = 0.0}, function()
+			if self.sounds[channel].name == name then
+				self.sounds[channel] = nil
+			end
+		end)
+		fadein(self, self.sounds[channel])
+	else
+		self.sounds[channel] = {name = name, gain = 1.0}
+		sound.play("/sound#" .. name, {gain = 1.0}, function()
+			if self.sounds[channel].name == name then
+				self.sounds[channel] = nil
+			end
+		end)
+	end
+end
+
+local function process_tags(self, tags, widgets)
+	local opentag = ""
+	local closetag = ""
+	local image = nil
+	
+	if not tags then return opentag, closetag end
+
+	for _,tag in ipairs(tags) do
+		if tag == "HEADER" then
+			opentag = opentag .. "<size=1.7>"
+			closetag = closetag .. "</size>"
+		end
+
+		if tag == "END" then
+			opentag = opentag .. "<color=red>"
+			closetag = closetag .. "</color>"
+		end	
+		
+		local data = tag:split() 
+		if data[1] == "IMAGE" then -- #IMAGE filename
+			if image == nil then
+				closetag = closetag .."<pic=" .. data[2] .. "> </pic>"
+				image = data[2]
+			else --only one image per paragraph!
+				closetag = closetag:gsub("pic=" .. image, "pic=" .. data[2])
+				image = data[2]
+			end
+
+		elseif data[1] == "SOUND" then -- #SOUND name channel
+			--just play all sounds at once, for simplicity
+			play_sound(self, data)
+			
+		elseif data[1] == "NUMBERPOOL" then -- e.g. #NUMBERPOOL poolvarname min max varname
+											-- or #NUMBERPOOL poolvarname min max varname expression maxexpressionvalue
+			local pool = poolwidget.new(data)
+			opentag = opentag .. "<numberpool=" .. pool.id .. ">"
+			closetag = closetag .."</numberpool>"
+			table.insert(widgets, pool)
+
+		elseif data[1] == "TEXTINPUT" then -- #TEXTINPUT varname
+			local ti = inputwidget.new(data)
+			opentag = opentag .. "<textinput=" .. ti.id .. ">"
+			closetag = closetag .."</textinput>"
+			table.insert(widgets, ti)
+
+		elseif data[1] == "POINTS" then
+			local points = pointswidget.new(data)
+			opentag = opentag .. "<" .. points.id .. ">"
+			closetag = closetag .. "</" .. points.id .. ">"
+			table.insert(widgets, points)
+
+		elseif data[1] == "CONDITION" then -- e.g. #CONDITION varname==0 
+			local widget = conditionwidget.new(data)
+			opentag = opentag .. "<condition=" .. widget.id .. ">"
+			closetag = closetag .. "</condition>"
+			for _, w in ipairs(widgets) do
+				if widget.id == w.id then -- no need in same condition widget
+					widget = nil
+					break
+				end
+			end
+			table.insert(widgets, widget)
+		end
+	end
+	
+	return opentag, closetag
+end
+
+local function process_story(self, paragraphs, choices)
+	self.data[self.flow] = {paragraphs = paragraphs, choices = choices}
+
+	if self.autosave and self.flow == "__default" then --autosave
+		msg.post(".", "save", {appid = self.autosave.appid, fname = self.autosave.fname})
+	end
+
+	if #choices == 0 then --end of story
+		msg.post(".", "story_completed")
+	end
+
+	self.widgets = {}
+	self.images = {}
+	local text = ""
+	
+	for _, paragraph in ipairs(paragraphs) do	
+		local t = paragraph.text
+		local open, close = process_tags(self, paragraph.tags, self.widgets)
+
+		for link in t:gmatch("%[(.-)%]") do
+			for i, choice in ipairs(choices) do
+				if choice.text == link then
+					link = link:gsub("%?", "%%?")
+					choice.inline = true
+					local open2, close2 = process_tags(self, choice.tags, self.widgets)
+					t = t:gsub("%[" .. link .. "%]", open2 .. "<a=answer" .. i .. "><color=green>" .. link .. "</color></a>" .. close2)
+				end
+			end
+		end
+		text = text .. "<p>".. open ..  localize(self, t) ..  close .. "</p>".. "\n"
+	end
+
+	for i, choice in ipairs(choices) do
+		if not choice.inline then
+			local open, close = process_tags(self, choice.tags, self.widgets)
+			text = text .. open.. "<a=answer" .. i .. "><color=green>" .. localize(self, choice.text) .. "</color></a>\n\n" .. close
+		end
+	end
+
+	text = text .. "\n"
+
+	text = text:gsub("<i>", "<i><color=yellow>"):gsub("</i>", "</color></i>")
+
+	self.words = richtext.create(text, "main", self.settings)
+		
+	for _, widget in ipairs(self.widgets) do
+		widget.init(self.words, self.story)
+	end
+
+	self.height = 0
+	for _, word in ipairs(self.words) do
+		local test = word.metrics.height - word.position_y 
+		if self.height < test then
+			self.height = test
+		end
+		word.is_link = word.tags["a"] ~= nil
+		if word.tags["pic"] ~= nil then
+			if #self.images == 0 then
+				load_image(self, word.tags["pic"])
+			end
+			table.insert(self.images, {name = word.tags["pic"], pos = test - HEIGHT })
+		end
+	end	
+
+end
+
+function init(self)
+	self.wheel_events = 0
+	self.wheel_power = 0
+	self.widgets = {}
+	self.images = {}
+	self.sounds = {}
+	self.data = {}
+	self.flow = "__default"
+
+	gui.set_render_order(5)
+end
+
+local function select_answer(self, answer)
+
+	sound.play("/sound#button")
+	
+	local tags = self.data[self.flow].choices[answer].tags
+	for _, tag in ipairs(tags) do
+		local data = tag:split()
+		if data[1] == "LINK" then
+			if html5 then
+				html5.run("document.getElementById(\"canvas\").onclick = function (e) {window.open(\"" .. data[2] .. "\",\"_blank\");document.getElementById(\"canvas\").onclick = \"\";};")
+			else
+				sys.open_url(data[2])
+			end
+			return
+		end
+	end
+
+	
+	local words = self.words
+	self.words = nil
+	self.images = {}
+
+	for _, item in ipairs(words) do
+		if item.node ~= self.hover then
+			gui.animate(item.node, "color.w", 0, gui.EASING_LINEAR, 0.25)
+		end
+	end
+
+	timer.delay(0.2, false, function()
+		self.hover = nil
+		gui.animate(gui.get_node("container"), "color.w", 0, gui.EASING_LINEAR, 0.2, 0, function()
+			clear_text(words, self.widgets)
+			local paragraphs, choices = self.story.continue(answer)
+			process_story(self, paragraphs, choices)
+			gui.animate(gui.get_node("container"), "color.w", 1, gui.EASING_LINEAR, 0.2)
+		end)
+	end)
+
+end
+
+local function switch_flow(self, name, path, delay)
+	local words = self.words
+	self.words = nil
+	self.images = {}
+
+	if words ~= nil then
+		for _, item in ipairs(words) do
+			if item.node ~= self.hover then
+				gui.animate(item.node, "color.w", 0, gui.EASING_LINEAR, 0.25)
+			end
+		end
+	end
+
+	clear_text(words, self.widgets)
+	self.flow = name or "__default"
+	self.story.switch_flow(name)
+	if path then
+		local paragraphs, choices = self.story.jump(path)
+		process_story(self, paragraphs, choices)
+	else
+		process_story(self, self.data[self.flow].paragraphs, self.data[self.flow].choices)
+	end
+
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("load") then
+		
+		self.images = {}
+		self.data = {}
+		self.flow = "__default"
+		clear_text(self.words, self.widgets)
+		self.words = nil
+		
+		self.settings = message.settings
+		self.settings.parent = gui.get_node("container")
+		
+		local res = sys.load_resource(message.file)
+		self.story = ink.create(res)
+		
+		local paragraphs, choices = self.story.continue()
+		process_story(self, paragraphs, choices)
+		
+		msg.post(".", "acquire_input_focus")
+		msg.post(sender, "story_loaded", {file = message.file})
+		
+	elseif message_id == hash("observe") then
+		self.story.add_observer(message.variable, function(value)
+			msg.post(sender, "variable_changed", {variable = message.variable, value = value})
+		end)
+
+	elseif message_id == hash("bind") then --not real bind, but sending notification
+		for _, name in ipairs(message.names) do
+			self.story.bind(name, function(...) 
+				msg.post(sender, "function_called", {name = name, args = {...}}) 
+			end)
+		end
+
+	elseif message_id == hash("enable_autosave") then
+		self.autosave = {appid = message.appid, fname = message.fname}
+
+	elseif message_id == hash("save") then
+		if self.flow ~= "__default" then
+			switch_flow(self)
+		end
+
+		local filename = sys.get_save_file(message.appid, message.fname)
+		local savedata = self.story.get_state()
+		savedata.flows = self.data
+		savedata.time = os.date("%d %b %Y, %H:%M")
+		savedata.image = self.current_image
+		sys.save(filename, savedata)
+
+	elseif message_id == hash("restore") then
+		local filename = sys.get_save_file(message.appid, message.fname)
+		local restored = sys.load(filename)
+		if restored.flows then
+			self.data = restored.flows
+			self.story.restore(restored)
+			switch_flow(self, nil, nil, 0)
+			self.image_cooldown = false
+			load_image(self, restored.image)
+		end
+
+	elseif message_id == hash("set_variable") then
+		self.story.assign_value(message.name, message.value)
+
+	elseif message_id == hash("flow") then
+		switch_flow(self, message.name, message.path)
+		
+	elseif message_id == hash("answer1") then
+		select_answer(self, 1)
+	elseif message_id == hash("answer2") then
+		select_answer(self, 2)
+	elseif message_id == hash("answer3") then
+		select_answer(self, 3)
+	elseif message_id == hash("answer4") then
+		select_answer(self, 4)
+	elseif message_id == hash("answer5") then
+		select_answer(self, 5)
+	elseif message_id == hash("answer6") then
+		select_answer(self, 6)
+	elseif message_id == hash("answer7") then
+		select_answer(self, 7)
+	elseif message_id == hash("answer8") then
+		select_answer(self, 8)
+	elseif message_id == hash("answer9") then
+		select_answer(self, 9)
+	elseif message_id == hash("answer10") then
+		select_answer(self, 10)
+	end
+end
+
+local function check_range(h, y)
+	if h < HEIGHT or y < 0 then
+		return 0
+	end
+
+	if y > h - HEIGHT  then
+		return h - HEIGHT
+	end
+
+	return y
+end
+
+local function slide(self)
+	local pos = gui.get_position(gui.get_node("container"))
+
+	local y = check_range(self.height, pos.y + self.dest * self.velocity * .3)
+	local time = self.velocity / 150
+
+	gui.animate(gui.get_node("container"), "position.y", y, gui.EASING_OUTCUBIC,time, 0,function()
+		update_image(self, y)
+	end)
+end
+
+local function check_wheel(self)
+	if self.height > HEIGHT and self.wheel_events > 0 then
+		local p = gui.get_position(gui.get_node("container"))
+
+		if self.wheel_events > 6 then --quick scroll 
+			local delta = 870 * self.dest
+			local y = math.max(0, p.y + delta)
+			y = math.min(self.height - HEIGHT, y)
+
+			update_image(self, y)
+			
+			gui.animate(gui.get_node("container"), "position.y", y, gui.EASING_OUTQUAD, 0.4, 0, function()
+				timer.delay(0.5, false, function()
+					self.wheel_events = 0
+					self.dest = 0
+				end)
+			end)
+			
+		elseif self.moving == 0 then
+			local delta = 50 * self.wheel_events * self.dest
+			local y = math.max(0, p.y + delta)
+			y = math.min(self.height - HEIGHT, y)
+			update_image(self, y)
+			gui.animate(gui.get_node("container"), "position.y", y, gui.EASING_LINEAR, 0.2,0, check_wheel)
+		end
+
+	else
+		self.dest = 0
+		self.moving = 0
+	end
+
+	self.wheel_events = 0
+end
+
+
+function on_input(self, action_id, action)
+	if action_id == nil and self.drag then
+		local pos = gui.get_position(gui.get_node("container"))
+		pos.y = check_range(self.height, pos.y + action.dy)
+		self.velocity = math.abs(action.dy)
+		self.dest = action.dy
+		gui.set_position(gui.get_node("container"), pos)
+		
+	elseif action_id == nil then
+		for _, widget in ipairs(self.widgets) do
+			if widget.onhover then
+				widget.onhover(action)
+			end
+		end
+		if self.words then
+			for _, item in ipairs(self.words) do
+				if item.is_link and gui.pick_node(item.node, action.x, action.y) then
+					local color = gui.get_color(item.node)
+					if self.hover ~= item.node and color.w > 0 then
+						--pprint(gui.get_color(item.node))
+						restore_hover(self)
+						self.hover = item.node
+						gui.animate(item.node, "color", vmath.vector4(0, 1, 0, 1), gui.EASING_LINEAR, 0.2)
+					end
+					return
+				end
+			end
+			restore_hover(self)
+		end
+
+	elseif action_id == hash("delete") and action.pressed then
+		for _, widget in ipairs(self.widgets) do
+			if widget.ontext then
+				widget.ontext()
+			end
+		end
+		
+	elseif action_id == hash("text") then
+		for _, widget in ipairs(self.widgets) do
+			if widget.ontext then
+				widget.ontext(action.text)
+			end
+		end
+		
+	elseif action_id == hash("touch") and action.pressed then
+		if self.words then
+			if richtext.on_click(self.words, action) then
+				return
+			end
+		end
+
+		for _, widget in ipairs(self.widgets) do
+			widget.onclick(action)
+		end
+
+		gui.cancel_animation(gui.get_node("container"), "position.y")
+		self.moving = 0
+		self.dest = 0
+
+		if gui.pick_node(gui.get_node("frame"), action.x, action.y) then
+			self.drag = true
+			self.velocity = 0
+		end
+
+	elseif action_id == hash("touch") and action.released and self.drag then
+		self.drag = false
+		slide(self)
+
+	elseif action_id == hash("button2") and action.pressed then
+		gui.cancel_animation(gui.get_node("container"), "position.y")
+		self.moving = 0
+		self.dest = 0
+		
+	elseif action_id == hash("scrollup") and action.value == 1 then
+		if self.dest ~= 1 then
+			self.dest = 1
+			self.wheel_events = 0
+			self.moving = 0
+			timer.delay(0.1, false, check_wheel)
+		end
+
+		self.wheel_events = self.wheel_events + 1
+		
+	elseif action_id == hash("scrolldown") and action.value == 1 then
+		if self.dest ~= -1 then
+			self.dest = -1
+			self.wheel_events = 0
+			self.moving = 0
+			timer.delay(0.1, false, check_wheel)
+		end
+
+		self.wheel_events = self.wheel_events + 1
+
+	elseif (action_id == hash("space") or action_id == hash("down") or action_id == hash("right")) and action.pressed then
+		self.wheel_events = 10
+		self.dest = 1
+		check_wheel(self)
+		
+	elseif (action_id == hash("up") or action_id == hash("left")) and action.pressed then
+		self.wheel_events = 10
+		self.dest = -1
+		check_wheel(self)
+	end
+end

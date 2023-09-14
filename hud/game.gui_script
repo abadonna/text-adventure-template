@@ -1,0 +1,179 @@
+local utils = require "ink.utils"
+APPID = "text_adventure"
+
+local text_settings =
+{
+	width = 1160,
+	position = vmath.vector3(20, -20, 0),
+	combine_words = true,
+	outline = vmath.vector3(0, 0, 0),
+	line_spacing = 1.1,
+	paragraph_spacing = 0.8,
+	color = vmath.vector4(1, 1, 1, .9),
+	fonts = {
+		main = {
+			regular = hash("main"),
+			italic = hash("italic")
+		}
+	}
+}
+
+local function activate(self, key)
+	local tab = gui.get_node(self.active .. "_tab")
+	local sign = gui.get_node(self.active)
+
+	gui.set_enabled(gui.get_node(self.active .. "_select"), false)
+	gui.set_enabled(gui.get_node(self.active .. "_marker"), false)
+
+	gui.animate(tab, "color.w", 0.6, gui.EASING_LINEAR, 0.25)
+	gui.animate(sign, "color.w", 0.5, gui.EASING_LINEAR, 0.25)
+	gui.animate(tab, "size.y", 55, gui.EASING_LINEAR, 0.25)
+
+	self.buttons[self.active] = tab
+	self.active = key
+	self.buttons[self.active] = nil
+	self.hover = nil
+
+	tab = gui.get_node(self.active .. "_tab")
+	sign = gui.get_node(self.active)
+
+	gui.animate(tab, "color.w", 1, gui.EASING_LINEAR, 0.25)
+	gui.animate(sign, "color.w", 1, gui.EASING_LINEAR, 0.25)
+	gui.animate(tab, "size.y", 50, gui.EASING_LINEAR, 0.25)
+
+	gui.set_enabled(gui.get_node(self.active .. "_select"), true)
+	gui.set_enabled(gui.get_node(self.active .. "_marker"), true)
+end
+
+local function restart(self)
+	msg.post("#ink", "load", {file = "/story/game.json", settings = text_settings})
+end
+
+
+function init(self)
+	
+	msg.post("#saves", "disable")
+	msg.post("#ink", "disable")
+	
+	self.buttons = {
+		saves = gui.get_node("saves_tab"),
+		quit = gui.get_node("quit_tab")
+	}
+
+	self.active = "game"
+
+	for key, _ in pairs(self.buttons) do
+		gui.set_enabled(gui.get_node(key .. "_select"), false)
+		gui.set_enabled(gui.get_node(key .. "_marker"), false)
+	end
+
+	gui.set_render_order(7)	
+
+	restart(self)
+end
+
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("story_loaded") then
+		--story is ready! time to update ui
+		--msg.post("#ink", "observe", {variable = "boo"})
+
+		msg.post("#ink", "bind", {names = {"quit", "restart"}})
+		
+		msg.post(".", "acquire_input_focus")
+		
+		self.game_is_loaded = true
+
+		msg.post("#ink", "enable")
+		msg.post("#saves", "disable")
+		
+		msg.post("#ink", "enable_autosave", {appid = APPID, fname = "autosave"})
+		msg.post("#ink", "restore", {appid = APPID, fname = "autosave"})
+		activate(self, "game")
+
+	elseif message_id == hash("function_called") then
+		if message.name == "quit" then
+			sys.exit(0)
+		else 
+			--delete autosave
+			local filename = sys.get_save_file(APPID, "autosave")
+			sys.save(filename, {})
+			
+			restart(self)
+		
+			msg.post(".", "continue")
+		end
+
+	elseif message_id == hash("story_completed") then
+		pprint("end of story")
+
+	elseif message_id == hash("variable_changed") then
+		--update ui
+
+	elseif message_id == hash("continue") then
+		msg.post("#ink", "enable")
+		msg.post("#saves", "disable")
+		activate(self, "game")
+
+	elseif message_id == hash("restore") then
+		msg.post("#ink", "enable")
+		msg.post("#ink", "restore", {appid = message.appid, fname = message.fname})
+		timer.delay(.5, false,  function() 
+			activate(self, "game")
+		end)
+
+	end
+
+end
+
+local function restore_hover(self)
+	if self.hover then
+		gui.animate(gui.get_node(self.hover), "color.w", 0.5, gui.EASING_LINEAR, 0.2)
+		self.hover = nil
+	end
+end
+
+function on_input(self, action_id, action)
+	if action_id == nil then
+		for key, node in pairs(self.buttons) do
+			if gui.is_enabled(node) and gui.pick_node(node, action.x, action.y) then
+				if self.hover ~= key then
+					restore_hover(self)
+					self.hover = key
+					gui.animate(gui.get_node(self.hover), "color.w", 1, gui.EASING_LINEAR, 0.2)
+				end
+				return
+			end
+		end
+		restore_hover(self)
+
+	elseif action_id == hash("touch") and action.pressed then
+		for key, node in pairs(self.buttons) do
+			if gui.pick_node(node, action.x, action.y) then
+				activate(self, key)
+				
+				if key == "game" then
+					msg.post("#ink", "enable")
+					msg.post("#ink", "flow")
+					msg.post("#saves", "disable")
+
+				elseif key == "quit" then
+					msg.post("#ink", "flow", {name = "menu", path = "menu"})
+					msg.post("#saves", "disable")
+
+				elseif key == "saves" then
+					msg.post("#saves", "enable")
+					msg.post("#saves", "update", {can_save = self.game_is_loaded})
+					msg.post(".", "acquire_input_focus")
+				end
+			end
+		end
+	----------------------------------------------------------
+	elseif action_id == hash("save") and action.pressed then
+		msg.post("#ink", "save", {appid = APPID, fname = "story"})
+	
+	elseif action_id == hash("load") and action.pressed then
+		msg.post("#ink", "restore", {appid = APPID, fname = "story"})
+	----------------------------------------------------------	
+	end
+end
