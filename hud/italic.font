@@ -1,6 +1,6 @@
-font: "/hud/HiMelody-Regular.ttf"
+font: "/builtins/fonts/vera_mo_bd.ttf"
 material: "/builtins/fonts/font-df.material"
-size: 40
+size: 25
 antialias: 1
 alpha: 1.0
 outline_alpha: 1.0

@@ -1,6 +1,6 @@
-font: "/hud/00499 Regular.ttf"
+font: "/builtins/fonts/vera_mo_bd.ttf"
 material: "/builtins/fonts/font-df.material"
-size: 30
+size: 25
 antialias: 1
 alpha: 1.0
 outline_alpha: 1.0
