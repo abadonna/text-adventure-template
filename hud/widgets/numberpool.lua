@@ -16,6 +16,7 @@ M.new = function(data)
 	}
 
 	obj.update = function(value)
+		if not value then return end
 		gui.set_text(obj.nodes.value, value)
 		
 		if obj.expression then

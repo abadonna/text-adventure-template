@@ -1,4 +1,4 @@
-script: "/main/game.gui_script"
+script: "/hud/game.gui_script"
 fonts {
   name: "main"
   font: "/hud/main.font"

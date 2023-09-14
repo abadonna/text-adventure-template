@@ -95,7 +95,34 @@ Do you want to [Restart] or [Quit] the game?
 
 === start === 
 
+// ----------- defold-ink demo stuff -----------------
 #IMAGE intercept
+
+VAR Name1 = "John"
+VAR Name2 = "Doe"
+VAR Strength = 1
+VAR Intelligence = 1
+VAR Charisma = 1
+VAR Points = 5
+
+
+Your name: #HEADER
+First Name: #TEXTINPUT Name1
+Last Name: #TEXTINPUT Name2
+
+Strength: #NUMBERPOOL Points 1 5 Strength
+Intelligence: #NUMBERPOOL Points 1 5 Intelligence
+Charisma: #NUMBERPOOL Points 1 5 Charisma
+
+//alternative use with expression: Brawling:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;@&nbsp;&nbsp;#NUMBERPOOL SkillPoints 0 100 PlayerBrawling PlayerBrawling+PlayerStrength 15
+
+You have @ points left to spend. #POINTS Points
+
+
+* [Start game] #CONDITION Points==0
+-
+
+//-------------------------------------------------
 
 //  Intro
 	- 	They are keeping me waiting. 

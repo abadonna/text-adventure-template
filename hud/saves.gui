@@ -1,4 +1,4 @@
-script: "/main/saves.gui_script"
+script: "/hud/saves.gui_script"
 fonts {
   name: "main"
   font: "/hud/main.font"

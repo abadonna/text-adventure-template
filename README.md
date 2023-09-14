@@ -1,12 +1,10 @@
-# Welcome to Defold
+# Text adventure project template for Defold
 
-This project was created from the "empty" project template.
+Ever thought to create something "Twine-looking" but with more readable script and more coding possibilities?
 
-The settings in ["game.project"](defold://open?path=/game.project) are all the default. A bootstrap empty ["main.collection"](defold://open?path=/main/main.collection) is included.
+Now you can make it with [Defold](https://defold.com) and [Ink](https://www.inklestudios.com/ink/) !
 
-Check out [the documentation pages](https://defold.com/learn) for examples, tutorials, manuals and API docs.
-
-If you run into trouble, help is available in [our forum](https://forum.defold.com).
+This template contains [The Intercept](https://www.inklestudios.com/ink/theintercept/) sample game.	It's ink script was slightly modified to demonstrate use of UI widgets (similar to Twine's) and some [defold-ink](https://github.com/abadonna/defold-ink) features.
 
 Happy Defolding!
 
