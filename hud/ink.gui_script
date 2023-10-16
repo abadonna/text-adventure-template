@@ -67,6 +67,10 @@ local function load_image(self, name)
 	self.current_image = name
 	local node = gui.clone(gui.get_node("picture"))
 	local res = sys.load_resource("/images/" .. name .. ".jpg")
+	if res == nil then
+		pprint("image " .. name .. ".jpg not found")
+		return
+	end
 	local img = image.load(res)
 	gui.new_texture(name, img.width, img.height, img.type, img.buffer)
 	gui.set_texture(node, name)
