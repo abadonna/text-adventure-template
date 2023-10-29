@@ -1,4 +1,5 @@
 local utils = require "ink.utils"
+local cursor = require "main.cursor"
 APPID = "text_adventure"
 
 local text_settings =
@@ -51,7 +52,9 @@ end
 
 
 function init(self)
-	
+	if defos then
+		cursor.set_cursor() -- https://github.com/subsoap/defos/archive/master.zip
+	end
 	msg.post("#saves", "disable")
 	msg.post("#ink", "disable")
 	
