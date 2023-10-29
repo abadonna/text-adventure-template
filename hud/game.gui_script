@@ -110,6 +110,9 @@ function on_message(self, message_id, message, sender)
 	elseif message_id == hash("variable_changed") then
 		--update ui
 
+	elseif message_id == hash("intro") then
+		pprint("sample event: intro")
+
 	elseif message_id == hash("continue") then
 		msg.post("#ink", "enable")
 		msg.post("#saves", "disable")

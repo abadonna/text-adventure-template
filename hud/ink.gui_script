@@ -205,7 +205,10 @@ local function process_tags(self, tags, widgets)
 		elseif data[1] == "SOUND" then -- #SOUND name channel
 			--just play all sounds at once, for simplicity
 			play_sound(self, data)
-			
+
+		elseif data[1] == "EVENT" then -- #EVENT name args
+			msg.post(".", data[2], {args = data[3]})
+
 		elseif data[1] == "NUMBERPOOL" then -- e.g. #NUMBERPOOL poolvarname min max varname
 											-- or #NUMBERPOOL poolvarname min max varname expression maxexpressionvalue
 			local pool = poolwidget.new(data)

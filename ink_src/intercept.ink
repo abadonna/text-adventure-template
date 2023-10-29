@@ -124,6 +124,8 @@ You have @ points left to spend. #POINTS Points
 
 //-------------------------------------------------
 
+#EVENT intro
+
 //  Intro
 	- 	They are keeping me waiting. 
 		*	Hut 14[]. The door was locked after I sat down. 
